@@ -39,17 +39,18 @@
   </div>
 
   <div class="card">
-    <div class="row">
+    <div class="row" id="freeTempo">
       <label>Tempo <select id="bpm"></select></label>
       <label><input type="checkbox" id="metroOn" checked> Metronome</label>
-      <label><input type="checkbox" id="clickOn" checked> Click audible</label>
     </div>
+    <div class="row" id="lockedTempo" style="display:none"><b id="lockedText"></b></div>
+    <div class="row" id="clickRow" style="margin-top:8px"><label><input type="checkbox" id="clickOn" checked> Click audible (turn off if you're using headphones)</label></div>
     <div class="row" style="margin-top:14px">
       <button id="recBtn">● Record</button>
       <div class="dot" id="dot"></div>
       <span class="timer" id="timer">0:00</span>
     </div>
-    <div class="muted" style="margin-top:8px">The first 4 clicks are your count-in. Record as many takes as you like.</div>
+    <div class="muted" style="margin-top:8px">With a metronome, the first 4 clicks are your count-in. Record as many takes as you like, listen back, then send your best one.</div>
     <div id="err" style="margin-top:10px"></div>
     <div id="takes"></div>
   </div>
@@ -69,8 +70,21 @@ const $ = id => document.getElementById(id);
 
 // Setup
 for (let t = 120; t <= 255; t += 15) $("bpm").add(new Option(t + " bpm", t));
-if (P.get("bpm")) $("bpm").value = P.get("bpm");
+const LOCK = P.get("lock") === "1";
+const LOCK_BPM = Number(P.get("bpm")) || 0;
+if (P.get("bpm") && !LOCK) $("bpm").value = P.get("bpm");
 if (P.get("metro") === "0") $("metroOn").checked = false;
+if (LOCK) {
+  $("freeTempo").style.display = "none";
+  $("lockedTempo").style.display = "flex";
+  if (P.get("metro") === "1" && LOCK_BPM) {
+    $("lockedText").textContent = "Tempo: " + LOCK_BPM + " bpm (set in the app)";
+  } else {
+    $("lockedText").textContent = "No metronome for this recording.";
+    $("clickRow").style.display = "none"; $("dot").style.display = "none";
+  }
+}
+function curBpm(){ return LOCK ? LOCK_BPM : +$("bpm").value; }
 if (P.get("label")) $("label").textContent = P.get("label");
 $("mode").textContent = LIVE
   ? "When you send a take, it goes to your teacher. You can close this tab after it says Sent."
@@ -109,7 +123,7 @@ async function start() {
     showErr(`Microphone blocked (${e.name}). Click the mic icon in the address bar, set Microphone to Allow, then reload this page.`);
     return;
   }
-  if ($("metroOn").checked) metroStart(+$("bpm").value);
+  if ($("metroOn").checked && curBpm()) metroStart(curBpm());
   const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find(m => MediaRecorder.isTypeSupported(m)) || "";
   rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   chunks = [];
@@ -145,7 +159,7 @@ $("sendBtn").onclick = async () => {
   $("sendMsg").innerHTML = `<div class="msg info">Sending… don't close this tab.</div>`;
   try {
     const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(t.blob); });
-    const payload = JSON.stringify({ t: TOKEN, mime: t.blob.type, secs: t.secs, bpm: +$("bpm").value, metro: $("metroOn").checked, data: b64 });
+    const payload = JSON.stringify({ t: TOKEN, mime: t.blob.type, secs: t.secs, bpm: curBpm(), metro: $("metroOn").checked, data: b64 });
     let out = null;
     try {
       const resp = await fetch(UPLOAD, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: payload });
