@@ -145,12 +145,18 @@ $("sendBtn").onclick = async () => {
   $("sendMsg").innerHTML = `<div class="msg info">Sending… don't close this tab.</div>`;
   try {
     const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(t.blob); });
-    const resp = await fetch(UPLOAD, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },   // simple request: no CORS preflight
-      body: JSON.stringify({ t: TOKEN, mime: t.blob.type, secs: t.secs, bpm: +$("bpm").value, metro: $("metroOn").checked, data: b64 })
-    });
-    const out = await resp.json();
+    const payload = JSON.stringify({ t: TOKEN, mime: t.blob.type, secs: t.secs, bpm: +$("bpm").value, metro: $("metroOn").checked, data: b64 });
+    let out = null;
+    try {
+      const resp = await fetch(UPLOAD, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: payload });
+      out = await resp.json();
+    } catch (netErr) {
+      // Chrome couldn't read Google's reply. Send again without reading the reply;
+      // the app tab confirms whether it was saved.
+      await fetch(UPLOAD, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: payload });
+      $("sendMsg").innerHTML = `<div class="msg info"><b>Sent, but not confirmed here.</b> Go back to the app tab: if it says <b>Saved</b> within 10 seconds, you're done. If it keeps saying "Waiting," tell your teacher.</div>`;
+      return;
+    }
     if (!out.ok) throw new Error(out.error || "Upload refused");
     $("sendMsg").innerHTML = `<div class="msg good"><b>Sent.</b> Your teacher has it. You can close this tab and go back to the app.</div>`;
   } catch (e) {
